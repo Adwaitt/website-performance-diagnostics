@@ -1,0 +1,135 @@
+## 1. Executive Diagnostic Summary
+
+A multi-stream diagnostic ingestion was performed across **Google Analytics**, **Microsoft Clarity**, and **Edge Ingress Server Logs** for the observation window on `2026-10-18`.
+
+```
+           TRAFFIC & INGRESS                      BEHAVIORAL ENGAGEMENT                      CONVERSION
+ [ 100% HTTP 200 OK | p95 < 38ms ]  ───►  [ High Scroll (72–85%) | High Dwell (165–328s) ]  ───►  [ 0% Add-to-Cart (ATC) ]
+      Infrastructure Healthy                        Deep User Consideration                            Pre-Cart Churn
+```
+
+* **Infrastructure & Platform Health:** **Nominal (P0 Zero Outages).** Edge latency averaged $35\text{ ms}$, upstream response times were $\le 36\text{ ms}$, HTTP status codes were uniformly `200 OK`, and zero client-side JavaScript or network exceptions were logged.
+* **Conversion Blockers:** The conversion funnel suffers an absolute drop-off between the **Product Detail Page (PDP) evaluation phase** and **Add-to-Cart (ATC) trigger**. Users exhibit strong intent, long dwell times ($>2.5$ to $5.5$ minutes), deep page penetration ($72\%\text{--}85\%$ scroll depth), and zero rage/dead clicks. 
+* **Primary Causal Drivers:**
+  1. **PDP Decision Paralysis / Spec Friction (P1):** Users inspect deep technical details (accordion expansions, sizing tables) and drop off without committing, pointing to ambiguous product specs, lack of sizing confidence, or missing inline social proof/guarantees.
+  2. **Geo-Specific / International Commerce Friction (P2):** International traffic (e.g., India, UK) landing on product pages without localized currency, dynamic duties, or clear local fulfillment timelines.
+
+---
+
+## 2. Conversion & Funnel Breakdown (Causal Path)
+
+```
+[ Homepage (/) ] 
+      │
+      ▼  (100% Navigation to Collection)
+[ Collection Pages (/collections/*) ]
+      │  
+      │  • Filtering functional (Size: Large applied, no dead clicks)
+      │  • Categorization effective
+      │
+      ▼  (100% Click-through to PDP)
+[ Product Detail Pages (/products/*) ] 
+      │  
+      │  • Dwell Time: 165s - 328s
+      │  • Scroll Depth: 72% - 85%
+      │  • Feature Engagement: Accordions expanded, reviews read, size charts checked
+      │
+      X  <--- CRITICAL CHURN POINT (0% Add-to-Cart)
+      │
+[ Cart / Checkout ] (0% Progression)
+```
+
+### Funnel Correlation Matrix
+
+| Funnel Step | Client Status (GA/Clarity) | Edge/Server State (Nginx) | User Behavioral Signal | Drop-off Causality |
+| :--- | :--- | :--- | :--- | :--- |
+| **Landing (`/`)** | 0 JS errors, delay $\le 110\text{ ms}$ | `HTTP 200`, $32\text{--}38\text{ ms}$ latency | Immediate transition to taxonomy | **None:** Smooth entry |
+| **Collection Browsing** | Filters applied seamlessly | Upstream healthy | Targeted intent (Sale, Electronics) | **None:** High directory efficiency |
+| **PDP Engagement** | Deep scroll ($72\%\text{--}85\%$), $9\text{--}14$ clicks | Content loaded fully, zero 4xx/5xx | Exhaustive specification inspection | **Conversion Wall:** Evaluation completed without purchasing conviction |
+| **Cart Initiation** | **0 conversions** | Zero `POST /cart/add` invoked | Session termination via tab closure | **Hesitation & Abandonment** |
+
+---
+
+## 3. Outlier Incident Log (Pinpointed with Session/Trace IDs)
+
+### Diagnostic Card: Incident #1
+```yaml
+Incident ID: INC-CHURN-98410291
+Trace ID: trace_8410291_01
+Clarity Session ID: ms_clarity_98410291
+GA Session ID: 1729213694
+Timestamp: 2026-10-18T01:08:14.102Z - 01:13:42Z (Duration: 328s)
+Client IP: 82.165.197.1 (London, United Kingdom)
+Device / UA: Mobile (iPhone iOS 18.0 / Safari 18.0)
+Funnel Path: / -> /collections/electronics -> /products/noise-canceling-headphones
+Server Response: HTTP 200 | Upstream Latency: 36ms | Bytes: 24,580
+UX Health: Rage Clicks: 0 | Dead Clicks: 0 | Scroll: 85% | JS Errors: 0
+Root Cause: PDP Specification Hesitation / Price-Value Asymmetry (P1)
+```
+* **Observable Behavior:** User spent $180+\text{ seconds}$ on `/products/noise-canceling-headphones`, expanded technical specifications, and scrolled down to customer reviews (85% depth). The user exited by closing the browser tab without clicking CTA `#add-to-cart`.
+
+---
+
+### Diagnostic Card: Incident #2
+```yaml
+Incident ID: INC-CHURN-98410344
+Trace ID: trace_8410344_02
+Clarity Session ID: ms_clarity_98410344
+GA Session ID: 1729214585
+Timestamp: 2026-10-18T01:23:05.412Z - 01:25:50Z (Duration: 165s)
+Client IP: 103.21.124.55 (Mumbai, India)
+Device / UA: Desktop (Windows 11 / Chrome 130.0.0.0)
+Funnel Path: / -> /collections/apparel/sale -> /products/merino-wool-pullover
+Server Response: HTTP 200 | Upstream Latency: 30ms | Bytes: 24,580
+UX Health: Rage Clicks: 0 | Dead Clicks: 0 | Scroll: 72% | JS Errors: 0
+Root Cause: Size Guide Indecision / Cross-Border Merchandising Friction (P1/P2)
+```
+* **Observable Behavior:** Navigated directly via clearance path, filtered successfully for "Size: Large", viewed the Merino Wool Pullover, engaged with the size chart modal/accordion, and immediately exited without adding the item to the cart.
+
+---
+
+## 4. Technical & Architectural Failures
+
+### System Health Overview
+* **Application Ingress Tier (`nginx-ingress`):** Zero 5xx, 4xx, or TLS handshake failures.
+* **Compute / Upstream Latency:** Fast execution ($30\text{--}36\text{ ms}$ response window).
+* **Render-Blocking Bottlenecks:** Render blocking delays of $94\text{ ms}$ (Desktop) and $110\text{ ms}$ (Mobile) are well within the Core Web Vitals "Good" threshold ($< 200\text{ ms}$).
+
+```
+[Client] ── (TLS 1.3 / HTTP/2) ──► [nginx-ingress] ── (30-36ms) ──► [Storefront Pod]
+                                          │
+                                   Status: 200 OK
+                                   Network Errors: 0
+                                   JS Engine Exceptions: 0
+```
+
+### Architectural Verdict
+The platform has **no active P0 infrastructure or runtime defects**. CDN caching, ingress proxies, and edge services operate under optimal conditions. Technical debt is not driving user churn in this cohort; failures are localized strictly to the **PDP presentation layer and commercial checkout enablement**.
+
+---
+
+## 5. UX & Behavioral Friction Points
+
+### 1. PDP "Decision Paralysis" & Friction (Merino Wool Pullover)
+* **Behavior:** The user filtered for "Size: Large", reached the PDP, and opened the size chart.
+* **UX Flaw:** If a user filters by size on a collection page and views a product, sizing data should be pre-selected and contextually reinforced. The necessity to review the generic size chart implies ambiguity (e.g., standard sizing vs. slim fit, absence of imperial/metric conversion for Indian/UK shoppers, or lack of "Model is 6'2 wearing L" guidance).
+
+### 2. High Consideration Without Conversion Reassurance (Noise-Canceling Headphones)
+* **Behavior:** 328 seconds spent reading specifications and reviews on an iOS device.
+* **UX Flaw:**
+  * **Sticky CTA Absence:** On mobile Safari, after scrolling 85% down into reviews, the `#add-to-cart` button is scrolled out of viewport. Without a persistent sticky bottom drawer with an active ATC button, re-scroll fatigue causes session abandonment.
+  * **Missing Friction Reducers:** High-ticket electronics require immediate reassurance at the specification level (warranty badges, battery replacement guarantees, return policy summaries, and financing options like Klarna/Clearpay).
+
+### 3. Internationalization & Geo-Targeting Gaps
+* Traffic from **London, GB** (`82.165.197.1`) and **Mumbai, IN** (`103.21.124.55`) had no evidence of geo-localized storefronts (currency selectors, localized shipping estimates, or import tax transparency). Cross-border visitors reviewing checkout-adjacent items drop off when total landed cost is ambiguous prior to checkout.
+
+---
+
+## 6. High-Priority Remediation Playbook (P0/P1 Action Items)
+
+| Priority | Category | Problem Statement | Action Item | Target Metric |
+| :--- | :--- | :--- | :--- | :--- |
+| **P1** | **UX / Mobile PDP** | Mobile users scrolling 85% deep lose visual access to the Primary CTA. | Implement a **Mobile Sticky ATC Bar** that slides into view once the primary hero button scrolls off-screen. Include price and variant selector. | Increase Mobile PDP-to-Cart by $+15\%$ |
+| **P1** | **UX / Apparel** | Shoppers who inspect size charts churn without variant selection. | 1. Implement interactive sizing recommendation tool (e.g., FitPredictor / height-weight matrix).<br>2. Auto-select filtered size ("Large") upon PDP landing. | Reduce Size Chart Exit Rate by $25\%$ |
+| **P1** | **Merchandising** | Deep dwell on specs indicates unanswered pre-purchase questions. | 1. Add "Questions & Answers" or AI-assisted spec search to PDP.<br>2. Anchor 2-year warranty and 30-day money-back guarantee directly below specs accordion. | Decrease specification dwell bounce |
+| **P2** | **Localization** | International IPs (`IN`, `GB`) face landing currency and shipping opacity. | 1. Implement edge-based IP geo-detection to auto-localize currency display (GBP £ / INR ₹).<br>2. Show delivery lead times directly on PDP ("Delivers to Mumbai in 4-6 days"). | Lift International Visitor Conversion by $+18\%$ |
